@@ -1,9 +1,10 @@
 package batch
 
 import java.lang.management.ManagementFactory
+
 import domain.Activity
 import org.apache.spark.{SparkConf, SparkContext}
-import org.apache.spark.sql.SQLContext
+import org.apache.spark.sql.{SQLContext, SaveMode}
 
 object BatchJob {
     def main(args : Array[String]) : Unit = {
@@ -24,7 +25,8 @@ object BatchJob {
         import org.apache.spark.sql.functions._
         import sqlContext.implicits._
 
-        val sourceFile = "file:////Users/asishbiswas/VirtualBox VMs/Vagrant/spark-kafka-cassandra-applying-lambda-architecture/vagrant/data.tsv"
+        //val sourceFile = "file:////Users/asishbiswas/VirtualBox VMs/Vagrant/spark-kafka-cassandra-applying-lambda-architecture/vagrant/data.tsv"  // to run from IDE
+        val sourceFile = "file:///vagrant/data.tsv"     // to run in cluster
         val inputRDD = sc.textFile(sourceFile)
 
         val rawActivityRDD = inputRDD.flatMap(line => {
@@ -99,35 +101,10 @@ object BatchJob {
               |sum(case when action = 'page_view'   then 1 else 0 end) as page_view_count
               |FROM activity
               |GROUP BY timestamp_hour, product
-            """.stripMargin)
-        activityByProductDF.foreach(println)
+            """.stripMargin).cache()
+        activityByProductDF.write.partitionBy("timestamp_hour").mode(SaveMode.Append).parquet("hdfs://lambda-pluralsight:9000/lambda/batch1")   // action
+        activityByProductDF.foreach(println)    // action
 
-        /*
-            User Defined Function for DataFrame
-         */
-
-        activityByProductDF.registerTempTable("activityByProduct")
-
-        sqlContext.udf.register("UnderExposed", (pageViewCount: Long, purchaseCount: Long) => {
-            if (purchaseCount == 0)
-                0
-            else
-                pageViewCount / purchaseCount   // purchase percentage against pageview
-        })
-
-        val underExposedProductsDF = sqlContext.sql(
-            """SELECT
-              |timestamp_hour,
-              |product,
-              |page_view_count,
-              |purchase_count,
-              |UnderExposed(page_view_count, purchase_count) as negative_exposer
-              |FROM
-              |activityByProduct
-              |ORDER BY negative_exposer DESC
-              |limit 5
-            """.stripMargin)
-        underExposedProductsDF.foreach(println)
     }
 
 }
