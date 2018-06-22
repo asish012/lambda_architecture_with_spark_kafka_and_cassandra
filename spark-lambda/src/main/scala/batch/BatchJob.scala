@@ -36,7 +36,9 @@ object BatchJob {
                 None
         })
 
-        // using RDD //
+        /*
+            RDD Transformation
+         */
 
 //        val productActivityMapRDD = rawActivityRDD.keyBy(a => (a.timestamp_hour, a.product)).cache()
 //
@@ -62,7 +64,9 @@ object BatchJob {
 //        activityByProductRDD.foreach(println)
 
 
-        // using dataframe //
+        /*
+            DataFrame Operation with SQL
+         */
 
         val rawActivityDF = rawActivityRDD.toDF()
 
@@ -98,6 +102,32 @@ object BatchJob {
             """.stripMargin)
         activityByProductDF.foreach(println)
 
+        /*
+            User Defined Function for DataFrame
+         */
+
+        activityByProductDF.registerTempTable("activityByProduct")
+
+        sqlContext.udf.register("UnderExposed", (pageViewCount: Long, purchaseCount: Long) => {
+            if (purchaseCount == 0)
+                0
+            else
+                pageViewCount / purchaseCount   // purchase percentage against pageview
+        })
+
+        val underExposedProductsDF = sqlContext.sql(
+            """SELECT
+              |timestamp_hour,
+              |product,
+              |page_view_count,
+              |purchase_count,
+              |UnderExposed(page_view_count, purchase_count) as negative_exposer
+              |FROM
+              |activityByProduct
+              |ORDER BY negative_exposer DESC
+              |limit 5
+            """.stripMargin)
+        underExposedProductsDF.foreach(println)
     }
 
 }
