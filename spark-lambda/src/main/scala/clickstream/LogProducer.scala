@@ -3,6 +3,7 @@ package clickstream
 import java.io.FileWriter
 
 import config.Settings
+import org.apache.commons.io.FileUtils
 
 import scala.util.Random
 
@@ -18,45 +19,57 @@ object LogProducer extends App {
     val Pages = (0 to weblogConfig.pages).map(i => s"Page-$i")
 
     val filePath = weblogConfig.filePath
-    val fileWritter = new FileWriter(filePath, true)
+    val destPath = weblogConfig.destPath
 
-    // introduce some randomness to time increments
     val rnd = new Random()
-    val incrementTimeEvery = rnd.nextInt(weblogConfig.records - 1) + 1
 
-    var timestamp = System.currentTimeMillis()
-    var adjustedTimestamp = timestamp
+    for (fileCount <- 0 to weblogConfig.numberOfFiles) {
+        val fileWritter = new FileWriter(filePath, true)
+        val incrementTimeEvery = rnd.nextInt(weblogConfig.records - 1) + 1
 
-    for (iteration <- 1 to weblogConfig.records) {
-        adjustedTimestamp = adjustedTimestamp + ((System.currentTimeMillis() - timestamp) * weblogConfig.timeMultiplier)
-        timestamp = System.currentTimeMillis()
-        var action = iteration % (rnd.nextInt(200) + 1) match {
-            case 0 => "purchase"
-            case 1 => "add_to_cart"
-            case _ => "page_view"
+        var timestamp = System.currentTimeMillis()
+        var adjustedTimestamp = timestamp
+
+        for (iteration <- 1 to weblogConfig.records) {
+            adjustedTimestamp = adjustedTimestamp + ((System.currentTimeMillis() - timestamp) * weblogConfig.timeMultiplier)
+            timestamp = System.currentTimeMillis()
+            var action = iteration % (rnd.nextInt(200) + 1) match {
+                case 0 => "purchase"
+                case 1 => "add_to_cart"
+                case _ => "page_view"
+            }
+
+            val referrer = Referrers(rnd.nextInt(Referrers.length - 1))
+            val prevPage = referrer match {
+                case "Internal" => Pages(rnd.nextInt(Pages.length - 1))
+                case _ => ""
+            }
+
+            val visitor = Visitors(rnd.nextInt(Visitors.length - 1))
+            val page = Pages(rnd.nextInt(Pages.length - 1))
+            val product = Products(rnd.nextInt(Products.length - 1))
+
+            val logLine = s"$adjustedTimestamp\t$referrer\t$action\t$prevPage\t$visitor\t$page\t$product\n"
+            fileWritter.write(logLine)
+
+            if (iteration % incrementTimeEvery == 0) {
+                // random wait
+                println(s"Sent $iteration messages!")
+                val sleeping = rnd.nextInt(incrementTimeEvery * 60)
+                println(s"Sleeping for $sleeping ms")
+                Thread sleep sleeping
+            }
         }
+        fileWritter.close()
 
-        val referrer = Referrers(rnd.nextInt(Referrers.length - 1))
-        val prevPage = referrer match {
-            case "Internal" => Pages(rnd.nextInt(Pages.length - 1))
-            case _ => ""
-        }
+        // move the file to destPath
+        val outputFile = FileUtils.getFile(s"${destPath}date_$timestamp")
+        println(s"Moving produced data to $outputFile")
+        FileUtils.moveFile(FileUtils.getFile(filePath), outputFile)
 
-        val visitor = Visitors(rnd.nextInt(Visitors.length - 1))
-        val page = Pages(rnd.nextInt(Pages.length - 1))
-        val product = Products(rnd.nextInt(Products.length - 1))
-
-        val logLine = s"$adjustedTimestamp\t$referrer\t$action\t$prevPage\t$visitor\t$page\t$product\n"
-        fileWritter.write(logLine)
-
-        if (iteration % incrementTimeEvery == 0) {
-            // random wait
-            println(s"Sent $iteration messages!")
-            val sleeping = rnd.nextInt(incrementTimeEvery * 60)
-            println(s"Sleeping for $sleeping ms")
-            Thread sleep sleeping
-        }
+        val sleepTime = 5000
+        println(s"Sleeping for $sleepTime")
+        Thread sleep sleepTime
     }
-    fileWritter.close()
 
 }

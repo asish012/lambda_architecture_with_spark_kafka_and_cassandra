@@ -3,21 +3,13 @@ package batch
 import java.lang.management.ManagementFactory
 
 import domain.Activity
-import org.apache.spark.{SparkConf, SparkContext}
+import utils.SparkUtils._
 import org.apache.spark.sql.{SQLContext, SaveMode}
 
 object BatchJob {
     def main(args : Array[String]) : Unit = {
-        // get spark configuration
-        val conf = new SparkConf().setAppName("Lambda architecture with Spark")
-
-        // Check if running from IDE
-        if (ManagementFactory.getRuntimeMXBean.getInputArguments.toString.contains("IntelliJ IDEA")) {
-            conf.setMaster("local[*]")
-        }
-
         // setup spark context
-        val sc = new  SparkContext(conf)
+        val sc = getSparkContext("Lambda with Spark")
         // sql context
         implicit val sqlContext = new SQLContext(sc)
 
@@ -25,8 +17,8 @@ object BatchJob {
         import org.apache.spark.sql.functions._
         import sqlContext.implicits._
 
-        //val sourceFile = "file:////Users/asishbiswas/VirtualBox VMs/Vagrant/spark-kafka-cassandra-applying-lambda-architecture/vagrant/data.tsv"  // to run from IDE
-        val sourceFile = "file:///vagrant/data.tsv"     // to run in cluster
+        //val sourceFile = "file:///Users/asishbiswas/VirtualBox VMs/Vagrant/spark-kafka-cassandra-applying-lambda-architecture/vagrant/data.tsv"  // to run from IDE
+        val sourceFile = "file:///vagrant/data.tsv"     // to run in vm cluster
         val inputRDD = sc.textFile(sourceFile)
 
         val rawActivityRDD = inputRDD.flatMap(line => {

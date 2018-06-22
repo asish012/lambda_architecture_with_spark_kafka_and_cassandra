@@ -14,6 +14,8 @@ object Settings {
         lazy val pages          = clickstream.getInt("pages")
         lazy val visitors       = clickstream.getInt("visitors")
         lazy val filePath       = clickstream.getString("file_path")
+        lazy val destPath       = clickstream.getString("dest_path")
+        lazy val numberOfFiles  = clickstream.getInt("number_of_files")
         // lazy val: the value of the variable will not be evaluated until they are actually used.
     }
 
