@@ -45,6 +45,7 @@ object StreamingJob {
             }
         }
 
+        // DStream to RDD, RDD to DF, Find activity by product
         val activityByProductDStream = activityDStream.transform{ activity =>
             val activityDF = activity.toDF()
             activityDF.registerTempTable("activity")
