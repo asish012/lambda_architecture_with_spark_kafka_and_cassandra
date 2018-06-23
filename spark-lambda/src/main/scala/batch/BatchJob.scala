@@ -21,6 +21,7 @@ object BatchJob {
         val sourceFile = "file:///vagrant/data.tsv"     // to run in vm cluster
         val inputRDD = sc.textFile(sourceFile)
 
+        // prepare rdd of activity
         val rawActivityRDD = inputRDD.flatMap(line => {
             val record = line.split("\\t")
             val MS_IN_HOUR = 60 * 60 * 1000

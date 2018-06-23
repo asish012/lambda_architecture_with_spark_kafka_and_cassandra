@@ -8,4 +8,10 @@ package object domain {
                          product : String,
                          inputProps : Map[String, String] = Map()
                         )
+
+    case class ActivityByProduct(timestamp_hour : Long,
+                                 product : String,
+                                 purchase_count : Long,
+                                 add_to_cart_count : Long,
+                                 page_view_count : Long)
 }
