@@ -84,10 +84,13 @@ object StreamingJob {
 
             if (newItemsPerKey.isEmpty) {
                 // if no new previous state is found, and the old state is very old, remove the state
-                if (System.currentTimeMillis() - prevTimestamp > 30000 + 4000)  // 30s = timeout | 4s = batch interval
+                if (System.currentTimeMillis() - prevTimestamp > 30000 + 4000) { // 30s = timeout | 4s = batch interval
+                    // haven't found items that corresponds current key, but found an old state. lets remove the state.
                     newState = None
-                else
+                } else {
+                    // haven't found items that corresponds current key, neither found any previous state. lets give the key a state with current-timestamp.
                     newState = Some((prevTimestamp, purchase_count, add_to_cart_count, page_view_count))
+                }
             } else {
                 // previous state is present, aggregate current with previous state
                 newItemsPerKey.foreach(a => {
@@ -99,12 +102,13 @@ object StreamingJob {
                 newState = Some((System.currentTimeMillis(), purchase_count, add_to_cart_count, page_view_count))
             }
             newState
-        })
+        }).print()
 
-        statefulActivityByProductDStream.foreachRDD(rdd => {
-            rdd.map(item => ActivityByProduct(item._1._1, item._1._2, item._2._2, item._2._3, item._2._4))
-                .toDF().registerTempTable("statefulActiityByProduct")
-        })
+//        for Zeppelin to display statefulActivityByProduct from registered table
+//        statefulActivityByProductDStream.foreachRDD(rdd => {
+//            rdd.map(item => ActivityByProduct(item._1._1, item._1._2, item._2._2, item._2._3, item._2._4))
+//                .toDF().registerTempTable("statefulActiityByProduct")
+//        })
 
 
         ssc.start()             // returns immediately, we need to wait while streaming data starts and our operation can continue
