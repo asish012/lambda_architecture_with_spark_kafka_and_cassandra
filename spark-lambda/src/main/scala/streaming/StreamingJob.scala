@@ -45,27 +45,39 @@ object StreamingJob {
             }
         }
 
-        // DStream to RDD, RDD to DF, Find activity by product
-        val statefulActivityByProductDStream = activityDStream.transform{ activity =>
-            val activityDF = activity.toDF()
-            activityDF.registerTempTable("activity")
+//        // DStream to RDD, RDD to DF, Find activity by product
+//            val statefulActivityByProductDStream = activityDStream.transform{ rawActivityRDD =>
+//                val activityDF = activity.toDF()
+//                activityDF.registerTempTable("activity")
+//
+//                val activityByProductDF = sqlContext.sql(
+//                    """SELECT
+//                      |timestamp_hour,
+//                      |product,
+//                      |sum(case when action = 'purchase'    then 1 else 0 end) as purchase_count,
+//                      |sum(case when action = 'add_to_cart' then 1 else 0 end) as add_to_cart_count,
+//                      |sum(case when action = 'page_view'   then 1 else 0 end) as page_view_count
+//                      |FROM activity
+//                      |GROUP BY timestamp_hour, product
+//                    """.stripMargin)
+//
+//                // return a key-valued dataframe. [Key : (String, Long), Value : ActivityByProduct]
+//                activityByProductDF.map( r => {
+//                    ( (r.getLong(0), r.getString(1)),
+//                    ActivityByProduct(r.getLong(0), r.getString(1), r.getLong(2), r.getLong(3), r.getLong(4)) )})
 
-            val activityByProductDF = sqlContext.sql(
-                """SELECT
-                  |timestamp_hour,
-                  |product,
-                  |sum(case when action = 'purchase'    then 1 else 0 end) as purchase_count,
-                  |sum(case when action = 'add_to_cart' then 1 else 0 end) as add_to_cart_count,
-                  |sum(case when action = 'page_view'   then 1 else 0 end) as page_view_count
-                  |FROM activity
-                  |GROUP BY timestamp_hour, product
-                """.stripMargin)
+        // Same operation from RDD level, but without going too deep to DataFrame.
+        // DStream to RDD to updateState
+        val statefulActivityByProductDStream = activityDStream.transform{ rawActivityRDD =>
+            val productActivityMapRDD = rawActivityRDD.keyBy(a => (a.timestamp_hour, a.product)).cache()
 
-            // return a key-valued dataframe. [Key : (String, Long), Value : ActivityByProduct]
-            activityByProductDF.map( r => {
-                ( (r.getLong(0), r.getString(1)),
-                ActivityByProduct(r.getLong(0), r.getString(1), r.getLong(2), r.getLong(3), r.getLong(4)) )})
-
+            productActivityMapRDD.mapValues(a =>
+                a.action match {
+                    case "purchase"     => ActivityByProduct(a.timestamp_hour, a.product, 1, 0, 0)
+                    case "add_to_cart"  => ActivityByProduct(a.timestamp_hour, a.product, 0, 1, 0)
+                    case "page_view"    => ActivityByProduct(a.timestamp_hour, a.product, 0, 0, 1)
+                }
+            )
         }.updateStateByKey((newItemsPerKey : Seq[ActivityByProduct], currentState : Option[(Long, Long, Long, Long)]) => {
             var (prevTimestamp, purchase_count, add_to_cart_count, page_view_count) = currentState.getOrElse((0L, 0L, 0L, 0L))
             var newState : Option[(Long, Long, Long, Long)] = null
@@ -87,7 +99,13 @@ object StreamingJob {
                 newState = Some((System.currentTimeMillis(), purchase_count, add_to_cart_count, page_view_count))
             }
             newState
-        }).print()
+        })
+
+        statefulActivityByProductDStream.foreachRDD(rdd => {
+            rdd.map(item => ActivityByProduct(item._1._1, item._1._2, item._2._2, item._2._3, item._2._4))
+                .toDF().registerTempTable("statefulActiityByProduct")
+        })
+
 
         ssc.start()             // returns immediately, we need to wait while streaming data starts and our operation can continue
         ssc.awaitTermination()  // wait indefinitely (we'll close the app manually)
