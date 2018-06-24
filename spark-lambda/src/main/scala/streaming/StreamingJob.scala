@@ -75,7 +75,7 @@ object StreamingJob {
                 if (System.currentTimeMillis() - prevTimestamp > 30000 + 4000)  // 30s = timeout | 4s = batch interval
                     newState = None
                 else
-                    Some((prevTimestamp, purchase_count, add_to_cart_count, page_view_count))
+                    newState = Some((prevTimestamp, purchase_count, add_to_cart_count, page_view_count))
             } else {
                 // previous state is present, aggregate current with previous state
                 newItemsPerKey.foreach(a => {
