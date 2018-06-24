@@ -46,7 +46,7 @@ object StreamingJob {
         }
 
         // DStream to RDD, RDD to DF, Find activity by product
-        val activityByProductDStream = activityDStream.transform{ activity =>
+        val statefulActivityByProductDStream = activityDStream.transform{ activity =>
             val activityDF = activity.toDF()
             activityDF.registerTempTable("activity")
 
@@ -61,13 +61,33 @@ object StreamingJob {
                   |GROUP BY timestamp_hour, product
                 """.stripMargin)
 
-            // [K : (String, Long), V : ActivityByProduct]
-            activityByProductDF.map{ r =>
+            // return a key-valued dataframe. [Key : (String, Long), Value : ActivityByProduct]
+            activityByProductDF.map( r => {
                 ( (r.getLong(0), r.getString(1)),
-                ActivityByProduct(r.getLong(0), r.getString(1), r.getLong(2), r.getLong(3), r.getLong(4)) )}
+                ActivityByProduct(r.getLong(0), r.getString(1), r.getLong(2), r.getLong(3), r.getLong(4)) )})
 
-        }
-        activityByProductDStream.print()
+        }.updateStateByKey((newItemsPerKey : Seq[ActivityByProduct], currentState : Option[(Long, Long, Long, Long)]) => {
+            var (prevTimestamp, purchase_count, add_to_cart_count, page_view_count) = currentState.getOrElse((0L, 0L, 0L, 0L))
+            var newState : Option[(Long, Long, Long, Long)] = null
+
+            if (newItemsPerKey.isEmpty) {
+                // if no new previous state is found, and the old state is very old, remove the state
+                if (System.currentTimeMillis() - prevTimestamp > 30000 + 4000)  // 30s = timeout | 4s = batch interval
+                    newState = None
+                else
+                    Some((prevTimestamp, purchase_count, add_to_cart_count, page_view_count))
+            } else {
+                // previous state is present, aggregate current with previous state
+                newItemsPerKey.foreach(a => {
+                    purchase_count += a.purchase_count
+                    add_to_cart_count += a.add_to_cart_count
+                    page_view_count += a.page_view_count
+                })
+
+                newState = Some((System.currentTimeMillis(), purchase_count, add_to_cart_count, page_view_count))
+            }
+            newState
+        }).print()
 
         ssc.start()             // returns immediately, we need to wait while streaming data starts and our operation can continue
         ssc.awaitTermination()  // wait indefinitely (we'll close the app manually)
