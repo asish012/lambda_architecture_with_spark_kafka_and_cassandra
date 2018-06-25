@@ -1,10 +1,12 @@
 package streaming
 
-import domain.{Activity, ActivityByProduct}
 import org.apache.spark.SparkContext
 import org.apache.spark.sql.SQLContext
-import org.apache.spark.streaming.{Duration, Seconds, StreamingContext}
+import org.apache.spark.streaming._
+
+import domain.{Activity, ActivityByProduct}
 import utils.SparkUtils._
+import functions._
 
 object StreamingJob {
     def main(args: Array[String]): Unit = {
@@ -68,6 +70,9 @@ object StreamingJob {
 
         // Same operation from RDD level, but without going too deep to DataFrame.
         // DStream to RDD to updateState
+
+        val spec = StateSpec.function(mapActivityStateFunction).timeout(Seconds(30))
+
         val statefulActivityByProductDStream = activityDStream.transform{ rawActivityRDD =>
             val productActivityMapRDD = rawActivityRDD.keyBy(a => (a.timestamp_hour, a.product)).cache()
 
@@ -78,7 +83,13 @@ object StreamingJob {
                     case "page_view"    => ActivityByProduct(a.timestamp_hour, a.product, 0, 0, 1)
                 }
             )
-        }.updateStateByKey((newItemsPerKey : Seq[ActivityByProduct], currentState : Option[(Long, Long, Long, Long)]) => {
+        }.mapWithState(spec)
+
+        statefulActivityByProductDStream.print()
+
+
+    // UpdateStateByKey (old way of updating state) //
+    /* .updateStateByKey((newItemsPerKey : Seq[ActivityByProduct], currentState : Option[(Long, Long, Long, Long)]) => {
             var (prevTimestamp, purchase_count, add_to_cart_count, page_view_count) = currentState.getOrElse((0L, 0L, 0L, 0L))
             var newState : Option[(Long, Long, Long, Long)] = null
 
@@ -103,11 +114,11 @@ object StreamingJob {
             }
             newState
         }).print()
+    */
 
 //        for Zeppelin to display statefulActivityByProduct from registered table
 //        statefulActivityByProductDStream.foreachRDD(rdd => {
-//            rdd.map(item => ActivityByProduct(item._1._1, item._1._2, item._2._2, item._2._3, item._2._4))
-//                .toDF().registerTempTable("statefulActiityByProduct")
+//            rdd.toDF().registerTempTable("statefulActiityByProduct")
 //        })
 
 
